@@ -9,8 +9,8 @@ import os
 import urllib.request
 from playwright.async_api import async_playwright
 
-TELEGRAM_BOT_TOKEN = os.environ["8601749212:AAHyZ2yDGlDZJpJUMaF6yFt45NHmxoy7P-M"]
-TELEGRAM_CHAT_ID = os.environ["5455360942"]
+TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
+TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 BOOKING_URL = (
     "https://www.migrationsverket.se/ansokanbokning/valjtyp"
