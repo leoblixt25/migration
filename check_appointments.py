@@ -14,9 +14,9 @@ TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 BOOKING_URL = (
     "https://www.migrationsverket.se/ansokanbokning/valjtyp"
-    "?4&enhet=U0095&sprak=sv&callback=https:/www.swedenabroad.se"
+    "?3&enhet=U0095&sprak=en&callback=https:/www.swedenabroad.se"
 )
-NO_AVAILABILITY_TEXT = "Det finns inga lediga tider för närvarande"
+NO_AVAILABILITY_TEXT = "At the moment, there are no available time slots."
 
 
 def send_telegram(message: str, chat_id: str = None) -> None:
@@ -64,7 +64,7 @@ async def run_check() -> dict:
         if passport_select is None:
             raise RuntimeError("Could not find the reason dropdown")
 
-        await passport_select.select_option(label="ansöka om svenskt pass/id-handlingar")
+        await passport_select.select_option(label="apply for Swedish passport or id document")
         await page.wait_for_timeout(1000)
         try:
             await page.wait_for_response(
@@ -89,13 +89,20 @@ async def run_check() -> dict:
             await cb.check()
             await page.wait_for_timeout(500)
 
-        # Click Fortsätt
-        await page.locator("input[value='Fortsätt'], button:has-text('Fortsätt')").click()
+        # Click continue / next
+        await page.locator(
+            "input[value='Fortsätt'], input[value='Next'], button:has-text('Fortsätt'), button:has-text('Next')"
+        ).first.click()
         await page.wait_for_load_state("networkidle", timeout=30_000)
         await page.wait_for_timeout(1000)
 
         page_text = await page.inner_text("body")
-        still_on_selection_page = await page.locator("select:has-text('ansöka om svenskt pass/id-handlingar')").count() > 0
+        still_on_selection_page = (
+            await page.locator(
+                "select:has-text('ansöka om svenskt pass/id-handlingar'),"
+                "select:has-text('apply for Swedish passport or id document')"
+            ).count()
+        ) > 0
         await browser.close()
 
     if still_on_selection_page:
