@@ -34,21 +34,39 @@ def tg_api(method: str, payload: dict) -> dict:
         return result
 
 
-def get_recent_updates() -> list:
-    """Fetch updates from the last MAX_AGE_SECONDS only."""
-    result = tg_api("getUpdates", {"timeout": 5, "limit": 50})
+def get_updates(offset: int | None = None) -> list:
+    payload = {"timeout": 5, "limit": 50}
+    if offset is not None:
+        payload["offset"] = offset
+    result = tg_api("getUpdates", payload)
     print(
         f"Telegram getUpdates returned {len(result.get('result', []))} updates")
+    return result.get("result", [])
+
+
+def confirm_update_offset(offset: int) -> None:
+    tg_api("getUpdates", {"offset": offset, "timeout": 0, "limit": 1})
+
+
+def get_recent_updates() -> list:
+    """Fetch updates from the last MAX_AGE_SECONDS only."""
+    updates = get_updates()
     now = time.time()
     recent = []
-    for update in result.get("result", []):
+    max_update_id = None
+
+    for update in updates:
+        update_id = update.get("update_id")
+        if max_update_id is None or update_id > max_update_id:
+            max_update_id = update_id
+
         msg = update.get("message") or update.get("edited_message")
         if not msg:
             continue
         age = now - msg.get("date", 0)
         chat_id = msg.get("chat", {}).get("id")
         print(
-            f"update_id={update.get('update_id')} chat={chat_id} age={age:.1f}s text={msg.get('text')!r}"
+            f"update_id={update_id} chat={chat_id} age={age:.1f}s text={msg.get('text')!r}"
         )
         if age > MAX_AGE_SECONDS:
             print("Ignoring old update")
@@ -58,6 +76,11 @@ def get_recent_updates() -> list:
             print(f"Ignoring message from unknown chat: {chat_id}")
             continue
         recent.append(msg)
+
+    if max_update_id is not None:
+        confirm_update_offset(max_update_id + 1)
+        print(f"Confirmed updates through update_id={max_update_id}")
+
     print(f"Found {len(recent)} recent command(s) from authorized chat")
     return recent
 
