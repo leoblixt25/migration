@@ -18,7 +18,7 @@ from check_appointments import run_check, send_telegram, BOOKING_URL
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]   # your authorised chat ID
-MAX_AGE_SECONDS = 1800   # ignore messages older than 30 minutes
+MAX_AGE_SECONDS = 86400   # ignore messages older than 24 hours
 
 
 def tg_api(method: str, payload: dict) -> dict:
