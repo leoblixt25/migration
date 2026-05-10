@@ -29,14 +29,16 @@ def tg_api(method: str, payload: dict) -> dict:
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
         result = json.loads(resp.read())
-        print(f"Telegram API {method} returned ok={result.get('ok')} result_count={len(result.get('result', []))}")
+        print(
+            f"Telegram API {method} returned ok={result.get('ok')} result_count={len(result.get('result', []))}")
         return result
 
 
 def get_recent_updates() -> list:
     """Fetch updates from the last MAX_AGE_SECONDS only."""
     result = tg_api("getUpdates", {"timeout": 5, "limit": 50})
-    print(f"Telegram getUpdates returned {len(result.get('result', []))} updates")
+    print(
+        f"Telegram getUpdates returned {len(result.get('result', []))} updates")
     now = time.time()
     recent = []
     for update in result.get("result", []):
