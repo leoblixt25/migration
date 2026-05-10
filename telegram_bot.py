@@ -102,21 +102,35 @@ async def handle_commands():
             if text.startswith("/check"):
                 print("→ Handling /check command")
                 send_telegram(
-                    "🔍 Running appointment check... please wait.", chat_id)
+                    "🔍 <b>Checking for appointments...</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏛 Embassy of Sweden in Bangkok\n"
+                    "📋 Swedish passport / ID document\n\n"
+                    "⏳ This takes about 15 seconds, hang tight!",
+                    chat_id,
+                )
                 try:
                     print("→ Starting appointment check...")
                     result = await run_check()
                     print(f"→ Check result: available={result['available']}")
                     if result["available"]:
                         send_telegram(
-                            "✅ <b>Appointments may be available!</b>\n\n"
-                            f'👉 <a href="{BOOKING_URL}">Book now</a>',
+                            "🇸🇪 <b>Passport Appointment Available!</b>\n"
+                            "━━━━━━━━━━━━━━━━━━━━━━\n"
+                            "🏛 Embassy of Sweden in Bangkok\n"
+                            "📋 Reason: Swedish passport / ID document\n\n"
+                            "⚡️ Slots may be open — act fast, they go quickly!\n\n"
+                            f'👉 <a href="{BOOKING_URL}">Book your appointment now</a>',
                             chat_id,
                         )
                     else:
                         send_telegram(
-                            "❌ No appointments available right now.\n"
-                            "I'll keep checking daily and alert you when slots open.",
+                            "❌ <b>No appointments available</b>\n"
+                            "━━━━━━━━━━━━━━━━━━━━━━\n"
+                            "🏛 Embassy of Sweden in Bangkok\n"
+                            "📋 Swedish passport / ID document\n\n"
+                            "I'll keep checking daily at 08:00 and alert you the moment slots open.\n\n"
+                            f'👉 <a href="{BOOKING_URL}">Check manually</a>',
                             chat_id,
                         )
                 except Exception as e:
@@ -124,23 +138,34 @@ async def handle_commands():
                     import traceback
                     traceback.print_exc()
                     send_telegram(
-                        f"⚠️ Check failed with error:\n<code>{e}</code>", chat_id)
+                        "⚠️ <b>Check failed</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"Error: <code>{e}</code>\n\n"
+                        f'👉 <a href="{BOOKING_URL}">Check manually</a>',
+                        chat_id,
+                    )
 
             elif text.startswith("/help"):
                 print("→ Handling /help command")
                 send_telegram(
-                    "🤖 <b>Available commands</b>\n\n"
-                    "/check — Check for passport appointment slots right now\n"
+                    "🤖 <b>Passport Appointment Bot</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "🏛 Embassy of Sweden in Bangkok\n"
+                    "📋 Swedish passport / ID document\n\n"
+                    "<b>Commands</b>\n"
+                    "/check — Check for slots right now\n"
                     "/help  — Show this message\n\n"
-                    "I also run an automatic check every day at 08:00 and "
-                    "will message you if slots become available.",
+                    "🕗 Automatic daily check runs at 08:00.\n"
+                    "You'll be alerted immediately if slots open.\n\n"
+                    f'👉 <a href="{BOOKING_URL}">Booking page</a>',
                     chat_id,
                 )
 
             else:
                 print(f"→ Unknown command: {text}")
                 send_telegram(
-                    f"Unknown command: <code>{text}</code>\nSend /help to see available commands.",
+                    f"❓ Unknown command: <code>{text}</code>\n\n"
+                    "Send /help to see available commands.",
                     chat_id,
                 )
     except Exception as e:

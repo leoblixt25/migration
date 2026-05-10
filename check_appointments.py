@@ -125,9 +125,12 @@ async def main():
     result = await run_check()
     if result["available"]:
         send_telegram(
-            "🇸🇪 <b>Passport Appointment May Be Available!</b>\n\n"
-            "The booking page no longer shows the 'no available times' message.\n\n"
-            f'👉 <a href="{BOOKING_URL}">Check &amp; book now</a>'
+            "🇸🇪 <b>Passport Appointment Available!</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🏛 Embassy of Sweden in Bangkok\n"
+            "📋 Reason: Swedish passport / ID document\n\n"
+            "⚡️ Slots may be open — act fast, they go quickly!\n\n"
+            f'👉 <a href="{BOOKING_URL}">Book your appointment now</a>'
         )
     else:
         print("No appointments — no alert sent.")
