@@ -17,8 +17,8 @@ import urllib.request
 from check_appointments import run_check, send_telegram, BOOKING_URL
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]   # your authorised chat ID
-MAX_AGE_SECONDS    = 600   # ignore messages older than 10 minutes
+TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]   # your authorised chat ID
+MAX_AGE_SECONDS = 1800   # ignore messages older than 30 minutes
 
 
 def tg_api(method: str, payload: dict) -> dict:
@@ -28,12 +28,14 @@ def tg_api(method: str, payload: dict) -> dict:
         url, data=data, headers={"Content-Type": "application/json"}
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
-        return json.loads(resp.read())
+        result = json.loads(resp.read())
+        print(f"Telegram API {method} returned ok={result.get('ok')} result_count={len(result.get('result', []))}")
+        return result
 
 
 def get_recent_updates() -> list:
     """Fetch updates from the last MAX_AGE_SECONDS only."""
-    result = tg_api("getUpdates", {"timeout": 0, "limit": 50})
+    result = tg_api("getUpdates", {"timeout": 5, "limit": 50})
     print(f"Telegram getUpdates returned {len(result.get('result', []))} updates")
     now = time.time()
     recent = []
@@ -42,16 +44,19 @@ def get_recent_updates() -> list:
         if not msg:
             continue
         age = now - msg.get("date", 0)
+        chat_id = msg.get("chat", {}).get("id")
         print(
-            f"update_id={update.get('update_id')} chat={msg.get('chat', {}).get('id')} age={age:.1f}s text={msg.get('text')}"
+            f"update_id={update.get('update_id')} chat={chat_id} age={age:.1f}s text={msg.get('text')!r}"
         )
         if age > MAX_AGE_SECONDS:
+            print("Ignoring old update")
             continue
         # Security: only accept commands from your own chat ID
-        if str(msg.get("chat", {}).get("id")) != str(TELEGRAM_CHAT_ID):
-            print(f"Ignoring message from unknown chat: {msg['chat']['id']}")
+        if str(chat_id) != str(TELEGRAM_CHAT_ID):
+            print(f"Ignoring message from unknown chat: {chat_id}")
             continue
         recent.append(msg)
+    print(f"Found {len(recent)} recent command(s) from authorized chat")
     return recent
 
 
@@ -68,7 +73,8 @@ async def handle_commands():
         print(f"Received: '{text}' from chat {chat_id}")
 
         if text.startswith("/check"):
-            send_telegram("🔍 Running appointment check... please wait.", chat_id)
+            send_telegram(
+                "🔍 Running appointment check... please wait.", chat_id)
             try:
                 result = await run_check()
                 if result["available"]:
@@ -84,7 +90,8 @@ async def handle_commands():
                         chat_id,
                     )
             except Exception as e:
-                send_telegram(f"⚠️ Check failed with error:\n<code>{e}</code>", chat_id)
+                send_telegram(
+                    f"⚠️ Check failed with error:\n<code>{e}</code>", chat_id)
 
         elif text.startswith("/help"):
             send_telegram(
