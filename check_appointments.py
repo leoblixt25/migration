@@ -66,12 +66,20 @@ async def run_check() -> dict:
 
         await passport_select.select_option(label="ansöka om svenskt pass/id-handlingar")
         await page.wait_for_timeout(1000)
+        try:
+            await page.wait_for_response(
+                lambda resp: "viseringstyp.border" in resp.url and resp.status == 200,
+                timeout=10_000,
+            )
+        except Exception:
+            pass
 
         # Set persons = 1
         try:
             antal = page.locator("select").filter(has_text="1")
             if await antal.count() > 0:
                 await antal.first.select_option(value="1")
+                await page.wait_for_timeout(500)
         except Exception:
             pass
 
@@ -79,15 +87,23 @@ async def run_check() -> dict:
         cb = page.locator("input[type='checkbox']")
         if await cb.count() > 0 and not await cb.is_checked():
             await cb.check()
+            await page.wait_for_timeout(500)
 
         # Click Fortsätt
         await page.locator("input[value='Fortsätt'], button:has-text('Fortsätt')").click()
         await page.wait_for_load_state("networkidle", timeout=30_000)
+        await page.wait_for_timeout(1000)
 
         page_text = await page.inner_text("body")
+        still_on_selection_page = await page.locator("select:has-text('ansöka om svenskt pass/id-handlingar')").count() > 0
         await browser.close()
 
-    available = NO_AVAILABILITY_TEXT not in page_text
+    if still_on_selection_page:
+        available = False
+        print("Still on selection page after submit; assuming no availability.")
+    else:
+        available = NO_AVAILABILITY_TEXT not in page_text
+
     print(f"Available: {available}")
     print(f"Page snippet: {page_text[:300]}")
     return {"available": available, "page_text": page_text}
