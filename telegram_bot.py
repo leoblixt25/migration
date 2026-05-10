@@ -103,23 +103,23 @@ async def handle_commands():
                     send_telegram(
                         f"⚠️ Check failed with error:\n<code>{e}</code>", chat_id)
 
-        elif text.startswith("/help"):
-            print("→ Handling /help command")
-            send_telegram(
-                "🤖 <b>Available commands</b>\n\n"
-                "/check — Check for passport appointment slots right now\n"
-                "/help  — Show this message\n\n"
-                "I also run an automatic check every day at 08:00 and "
-                "will message you if slots become available.",
-                chat_id,
-            )
+            elif text.startswith("/help"):
+                print("→ Handling /help command")
+                send_telegram(
+                    "🤖 <b>Available commands</b>\n\n"
+                    "/check — Check for passport appointment slots right now\n"
+                    "/help  — Show this message\n\n"
+                    "I also run an automatic check every day at 08:00 and "
+                    "will message you if slots become available.",
+                    chat_id,
+                )
 
-        else:
-            print(f"→ Unknown command: {text}")
-            send_telegram(
-                f"Unknown command: <code>{text}</code>\nSend /help to see available commands.",
-                chat_id,
-            )
+            else:
+                print(f"→ Unknown command: {text}")
+                send_telegram(
+                    f"Unknown command: <code>{text}</code>\nSend /help to see available commands.",
+                    chat_id,
+                )
     except Exception as e:
         print(f"ERROR in handle_commands: {e}")
         import traceback
