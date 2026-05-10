@@ -18,7 +18,7 @@ from check_appointments import run_check, send_telegram, BOOKING_URL
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]   # your authorised chat ID
-MAX_AGE_SECONDS    = 360   # ignore messages older than 6 minutes
+MAX_AGE_SECONDS    = 600   # ignore messages older than 10 minutes
 
 
 def tg_api(method: str, payload: dict) -> dict:
@@ -34,6 +34,7 @@ def tg_api(method: str, payload: dict) -> dict:
 def get_recent_updates() -> list:
     """Fetch updates from the last MAX_AGE_SECONDS only."""
     result = tg_api("getUpdates", {"timeout": 0, "limit": 50})
+    print(f"Telegram getUpdates returned {len(result.get('result', []))} updates")
     now = time.time()
     recent = []
     for update in result.get("result", []):
@@ -41,6 +42,9 @@ def get_recent_updates() -> list:
         if not msg:
             continue
         age = now - msg.get("date", 0)
+        print(
+            f"update_id={update.get('update_id')} chat={msg.get('chat', {}).get('id')} age={age:.1f}s text={msg.get('text')}"
+        )
         if age > MAX_AGE_SECONDS:
             continue
         # Security: only accept commands from your own chat ID
