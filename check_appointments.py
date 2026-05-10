@@ -1,0 +1,109 @@
+"""
+check_appointments.py
+Core appointment-check logic. Can be imported or run directly.
+"""
+
+import asyncio
+import json
+import os
+import urllib.request
+from playwright.async_api import async_playwright
+
+TELEGRAM_BOT_TOKEN = os.environ["8601749212:AAHyZ2yDGlDZJpJUMaF6yFt45NHmxoy7P-M"]
+TELEGRAM_CHAT_ID = os.environ["5455360942"]
+
+BOOKING_URL = (
+    "https://www.migrationsverket.se/ansokanbokning/valjtyp"
+    "?4&enhet=U0095&sprak=sv&callback=https:/www.swedenabroad.se"
+)
+NO_AVAILABILITY_TEXT = "Det finns inga lediga tider för närvarande"
+
+
+def send_telegram(message: str, chat_id: str = None) -> None:
+    """Send a Telegram message. Uses TELEGRAM_CHAT_ID if chat_id not provided."""
+    target = chat_id or TELEGRAM_CHAT_ID
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = json.dumps({
+        "chat_id": target,
+        "text": message,
+        "parse_mode": "HTML",
+    }).encode()
+    req = urllib.request.Request(
+        url, data=payload, headers={"Content-Type": "application/json"}
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        print(f"Telegram → {resp.status}")
+
+
+async def run_check() -> dict:
+    """
+    Navigates the booking form and returns:
+      { "available": bool, "page_text": str }
+    """
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        page = await browser.new_page(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            )
+        )
+
+        print(f"Opening: {BOOKING_URL}")
+        await page.goto(BOOKING_URL, wait_until="networkidle", timeout=30_000)
+
+        # Find the dropdown that contains passport options
+        selects = page.locator("select")
+        count = await selects.count()
+        passport_select = None
+        for i in range(count):
+            if "pass" in (await selects.nth(i).inner_html()).lower():
+                passport_select = selects.nth(i)
+                break
+        if passport_select is None:
+            raise RuntimeError("Could not find the reason dropdown")
+
+        await passport_select.select_option(label="ansöka om svenskt pass/id-handlingar")
+        await page.wait_for_timeout(1000)
+
+        # Set persons = 1
+        try:
+            antal = page.locator("select").filter(has_text="1")
+            if await antal.count() > 0:
+                await antal.first.select_option(value="1")
+        except Exception:
+            pass
+
+        # Tick confirmation checkbox
+        cb = page.locator("input[type='checkbox']")
+        if await cb.count() > 0 and not await cb.is_checked():
+            await cb.check()
+
+        # Click Fortsätt
+        await page.locator("input[value='Fortsätt'], button:has-text('Fortsätt')").click()
+        await page.wait_for_load_state("networkidle", timeout=30_000)
+
+        page_text = await page.inner_text("body")
+        await browser.close()
+
+    available = NO_AVAILABILITY_TEXT not in page_text
+    print(f"Available: {available}")
+    print(f"Page snippet: {page_text[:300]}")
+    return {"available": available, "page_text": page_text}
+
+
+async def main():
+    result = await run_check()
+    if result["available"]:
+        send_telegram(
+            "🇸🇪 <b>Passport Appointment May Be Available!</b>\n\n"
+            "The booking page no longer shows the 'no available times' message.\n\n"
+            f'👉 <a href="{BOOKING_URL}">Check &amp; book now</a>'
+        )
+    else:
+        print("No appointments — no alert sent.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
