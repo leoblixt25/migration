@@ -21,18 +21,23 @@ NO_AVAILABILITY_TEXT = "At the moment, there are no available time slots."
 
 def send_telegram(message: str, chat_id: str = None) -> None:
     """Send a Telegram message. Uses TELEGRAM_CHAT_ID if chat_id not provided."""
-    target = chat_id or TELEGRAM_CHAT_ID
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = json.dumps({
-        "chat_id": target,
-        "text": message,
-        "parse_mode": "HTML",
-    }).encode()
-    req = urllib.request.Request(
-        url, data=payload, headers={"Content-Type": "application/json"}
-    )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        print(f"Telegram → {resp.status}")
+    try:
+        target = chat_id or TELEGRAM_CHAT_ID
+        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        payload = json.dumps({
+            "chat_id": target,
+            "text": message,
+            "parse_mode": "HTML",
+        }).encode()
+        req = urllib.request.Request(
+            url, data=payload, headers={"Content-Type": "application/json"}
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            print(f"Telegram → {resp.status}")
+    except Exception as e:
+        print(f"ERROR sending Telegram message: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 async def run_check() -> dict:
