@@ -1,0 +1,32 @@
+name: Check Passport Appointments
+
+on:
+  schedule:
+    # 08:00 ICT (Vietnam/Bangkok time = UTC+7) → 01:00 UTC
+    - cron: "0 1 * * *"
+  workflow_dispatch:   # also allows manual trigger from GitHub Actions tab
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: pip install playwright
+
+      - name: Install Playwright browsers (Chromium only)
+        run: playwright install --with-deps chromium
+
+      - name: Run appointment checker
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python check_appointments.py
