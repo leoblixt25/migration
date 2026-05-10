@@ -19,7 +19,7 @@ from check_appointments import run_check, send_telegram, BOOKING_URL
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]   # your authorised chat ID
 # ignore messages older than 6 minutes (workflow runs every 5 min)
-MAX_AGE_SECONDS = 360
+MAX_AGE_SECONDS = 600   # 10 min — covers GitHub Actions scheduling delays
 
 
 def tg_api(method: str, payload: dict) -> dict:
@@ -54,33 +54,50 @@ def get_recent_updates() -> list:
     updates = get_updates()
     now = time.time()
     recent = []
-    max_update_id = None
+    # highest update_id seen overall (to advance the queue)
+    max_seen_id = None
+    max_processed_id = None  # highest update_id we actually want to process
 
     for update in updates:
         update_id = update.get("update_id")
-        if max_update_id is None or update_id > max_update_id:
-            max_update_id = update_id
+        if max_seen_id is None or update_id > max_seen_id:
+            max_seen_id = update_id
 
         msg = update.get("message") or update.get("edited_message")
         if not msg:
+            # Non-message update (e.g. inline query) — safe to confirm and skip
             continue
+
         age = now - msg.get("date", 0)
         chat_id = msg.get("chat", {}).get("id")
         print(
             f"update_id={update_id} chat={chat_id} age={age:.1f}s text={msg.get('text')!r}"
         )
+
         if age > MAX_AGE_SECONDS:
-            print("Ignoring old update")
+            # Too old to act on — but still confirm it so it doesn't pile up
+            print("Ignoring old update (confirming to clear queue)")
+            if max_processed_id is None or update_id > max_processed_id:
+                max_processed_id = update_id
             continue
-        # Security: only accept commands from your own chat ID
+
         if str(chat_id) != str(TELEGRAM_CHAT_ID):
             print(f"Ignoring message from unknown chat: {chat_id}")
+            if max_processed_id is None or update_id > max_processed_id:
+                max_processed_id = update_id
             continue
-        recent.append(msg)
 
-    if max_update_id is not None:
-        confirm_update_offset(max_update_id + 1)
-        print(f"Confirmed updates through update_id={max_update_id}")
+        # Valid, recent, authorised command — keep it
+        recent.append((update_id, msg))
+        if max_processed_id is None or update_id > max_processed_id:
+            max_processed_id = update_id
+
+    # Confirm old/irrelevant updates so the queue stays clean,
+    # but do NOT confirm valid recent commands yet — they'll be
+    # confirmed after handle_commands processes them successfully.
+    if max_processed_id is not None:
+        confirm_update_offset(max_processed_id + 1)
+        print(f"Confirmed updates through update_id={max_processed_id}")
 
     print(f"Found {len(recent)} recent command(s) from authorized chat")
     return recent
@@ -95,10 +112,11 @@ async def handle_commands():
             return
 
         print(f"Processing {len(updates)} command(s)...")
-        for msg in updates:
+        for update_id, msg in updates:
             text = (msg.get("text") or "").strip().lower()
             chat_id = str(msg["chat"]["id"])
-            print(f"Received: '{text}' from chat {chat_id}")
+            print(
+                f"Received: '{text}' from chat {chat_id} (update_id={update_id})")
 
             if text.startswith("/check"):
                 print("→ Handling /check command")
@@ -144,6 +162,10 @@ async def handle_commands():
                     f"Unknown command: <code>{text}</code>\nSend /help to see available commands.",
                     chat_id,
                 )
+
+            # Mark this command as processed so it won't be seen again
+            confirm_update_offset(update_id + 1)
+            print(f"Confirmed update_id={update_id}")
     except Exception as e:
         print(f"ERROR in handle_commands: {e}")
         import traceback
