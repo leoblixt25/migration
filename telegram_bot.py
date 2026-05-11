@@ -3,6 +3,7 @@ telegram_bot.py — GitHub Actions version
 Run once per job, polls for recent commands, exits.
 
 Commands:
+  /status — check if bot is alive (fast, no appointment check)
   /check  — run an appointment check and reply with result
   /help   — show available commands
 """
@@ -15,14 +16,15 @@ import urllib.request
 from check_appointments import run_check, send_telegram, BOOKING_URL
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
-MAX_AGE_SECONDS    = 7200  # 2 hours — GitHub Actions throttles cron to ~1hr on inactive repos
+TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+# 2 hours — GitHub Actions throttles cron to ~1hr on inactive repos
+MAX_AGE_SECONDS = 7200
 
 
 def tg_api(method: str, payload: dict) -> dict:
-    url  = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}"
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/{method}"
     data = json.dumps(payload).encode()
-    req  = urllib.request.Request(
+    req = urllib.request.Request(
         url, data=data, headers={"Content-Type": "application/json"}
     )
     with urllib.request.urlopen(req, timeout=15) as resp:
@@ -32,15 +34,11 @@ def tg_api(method: str, payload: dict) -> dict:
 
 
 def get_recent_updates() -> list:
-    """
-    Fetch all pending updates, acknowledge ALL of them (so they never pile up),
-    and return only the ones that are recent + from the authorised chat.
-    """
-    result  = tg_api("getUpdates", {"timeout": 5, "limit": 100})
+    result = tg_api("getUpdates", {"timeout": 5, "limit": 100})
     updates = result.get("result", [])
-    now     = time.time()
-    recent  = []
-    max_id  = None
+    now = time.time()
+    recent = []
+    max_id = None
 
     for update in updates:
         uid = update.get("update_id")
@@ -51,23 +49,21 @@ def get_recent_updates() -> list:
         if not msg:
             continue
 
-        age     = now - msg.get("date", 0)
+        age = now - msg.get("date", 0)
         chat_id = str(msg.get("chat", {}).get("id", ""))
-        text    = msg.get("text", "")
+        text = msg.get("text", "")
         print(f"  update_id={uid} age={age:.0f}s chat={chat_id} text={text!r}")
 
         if age > MAX_AGE_SECONDS:
             print("  → too old, skipping")
             continue
-
         if chat_id != str(TELEGRAM_CHAT_ID):
             print("  → wrong chat, skipping")
             continue
 
-        print("  → queued for processing")
+        print("  → queued")
         recent.append(msg)
 
-    # Acknowledge everything so the queue stays clean
     if max_id is not None:
         tg_api("getUpdates", {"offset": max_id + 1, "timeout": 0, "limit": 1})
         print(f"Acknowledged all updates through {max_id}")
@@ -85,12 +81,21 @@ async def handle_commands() -> None:
 
     for msg in updates:
         chat_id = str(msg["chat"]["id"])
-        text    = (msg.get("text") or "").strip()
-        cmd     = text.lower()
+        text = (msg.get("text") or "").strip()
+        cmd = text.lower()
         print(f"\nHandling: {text!r} from {chat_id}")
 
         try:
-            if cmd.startswith("/check"):
+            if cmd.startswith("/status"):
+                send_telegram(
+                    "✅ <b>Bot is alive!</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    "GitHub Actions is running and listening.\n\n"
+                    "Send /check to run a full appointment check.",
+                    chat_id,
+                )
+
+            elif cmd.startswith("/check"):
                 send_telegram(
                     "🔍 <b>Checking for appointments...</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━━\n"
@@ -128,8 +133,9 @@ async def handle_commands() -> None:
                     "🏛 Embassy of Sweden in Bangkok\n"
                     "📋 Swedish passport / ID document\n\n"
                     "<b>Commands</b>\n"
-                    "/check — Check for slots right now\n"
-                    "/help  — Show this message\n\n"
+                    "/status — Check if bot is listening\n"
+                    "/check  — Check for slots right now\n"
+                    "/help   — Show this message\n\n"
                     "🕗 Auto-check runs daily at 08:00.\n\n"
                     f'👉 <a href="{BOOKING_URL}">Booking page</a>',
                     chat_id,
