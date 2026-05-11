@@ -14,7 +14,7 @@ TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 BOOKING_URL = (
     "https://www.migrationsverket.se/ansokanbokning/valjtyp"
-    "?enhet=U0095&sprak=en&callback=https://www.swedenabroad.se"
+    "?3&enhet=U0095&sprak=en&callback=https:/www.swedenabroad.se"
 )
 NO_AVAILABILITY_TEXT = "At the moment, there are no available time slots."
 
@@ -128,12 +128,20 @@ async def main():
             "🇸🇪 <b>Passport Appointment Available!</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
             "🏛 Embassy of Sweden in Bangkok\n"
-            "📋 Reason: Swedish passport / ID document\n\n"
+            "📋 Swedish passport / ID document\n\n"
             "⚡️ Slots may be open — act fast, they go quickly!\n\n"
             f'👉 <a href="{BOOKING_URL}">Book your appointment now</a>'
         )
     else:
-        print("No appointments — no alert sent.")
+        send_telegram(
+            "🕗 <b>Daily check complete</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🏛 Embassy of Sweden in Bangkok\n"
+            "📋 Swedish passport / ID document\n\n"
+            "❌ No appointments available today.\n"
+            "I'll alert you immediately when slots open.\n\n"
+            f'👉 <a href="{BOOKING_URL}">Check manually</a>'
+        )
 
 
 if __name__ == "__main__":
