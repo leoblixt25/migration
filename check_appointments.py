@@ -12,10 +12,7 @@ from playwright.async_api import async_playwright
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-BOOKING_URL = (
-    "https://www.migrationsverket.se/ansokanbokning/valjtyp"
-    "?3&enhet=U0095&sprak=en&callback=https:/www.swedenabroad.se"
-)
+BOOKING_URL = "https://www.migrationsverket.se/ansokanbokning/valjtyp?4&enhet=U0095&sprak=en&callback=https:/www.swedenabroad.se"
 NO_AVAILABILITY_TEXT = "At the moment, there are no available time slots."
 
 
@@ -104,7 +101,6 @@ async def run_check() -> dict:
         page_text = await page.inner_text("body")
         still_on_selection_page = (
             await page.locator(
-                "select:has-text('ansöka om svenskt pass/id-handlingar'),"
                 "select:has-text('apply for Swedish passport or id document')"
             ).count()
         ) > 0
@@ -128,20 +124,12 @@ async def main():
             "🇸🇪 <b>Passport Appointment Available!</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
             "🏛 Embassy of Sweden in Bangkok\n"
-            "📋 Swedish passport / ID document\n\n"
+            "📋 Reason: Swedish passport / ID document\n\n"
             "⚡️ Slots may be open — act fast, they go quickly!\n\n"
             f'👉 <a href="{BOOKING_URL}">Book your appointment now</a>'
         )
     else:
-        send_telegram(
-            "🕗 <b>Daily check complete</b>\n"
-            "━━━━━━━━━━━━━━━━━━━━━━\n"
-            "🏛 Embassy of Sweden in Bangkok\n"
-            "📋 Swedish passport / ID document\n\n"
-            "❌ No appointments available today.\n"
-            "I'll alert you immediately when slots open.\n\n"
-            f'👉 <a href="{BOOKING_URL}">Check manually</a>'
-        )
+        print("No appointments — no alert sent.")
 
 
 if __name__ == "__main__":
