@@ -1,8 +1,7 @@
 """
 telegram_bot.py
 Polls Telegram for bot commands. Designed to be run every 5 minutes
-by GitHub Actions. Only processes messages from the last 6 minutes
-to avoid re-handling old commands across runs.
+by GitHub Actions.
 
 Supported commands:
   /check  — run an appointment check immediately and reply with the result
@@ -17,8 +16,7 @@ import urllib.request
 from check_appointments import run_check, send_telegram, BOOKING_URL
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]   # your authorised chat ID
-# ignore messages older than 6 minutes (workflow runs every 5 min)
+TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 MAX_AGE_SECONDS = 600   # 10 min — covers GitHub Actions scheduling delays
 
 
@@ -31,154 +29,167 @@ def tg_api(method: str, payload: dict) -> dict:
     with urllib.request.urlopen(req, timeout=15) as resp:
         result = json.loads(resp.read())
         print(
-            f"Telegram API {method} returned ok={result.get('ok')} result_count={len(result.get('result', []))}")
+            f"Telegram API {method} → ok={result.get('ok')} count={len(result.get('result', []))}")
         return result
 
 
-def get_updates(offset: int | None = None) -> list:
-    payload = {"timeout": 5, "limit": 50}
-    if offset is not None:
-        payload["offset"] = offset
-    result = tg_api("getUpdates", payload)
-    print(
-        f"Telegram getUpdates returned {len(result.get('result', []))} updates")
+def get_updates() -> list:
+    result = tg_api("getUpdates", {"timeout": 5, "limit": 50})
     return result.get("result", [])
 
 
-def confirm_update_offset(offset: int) -> None:
-    tg_api("getUpdates", {"offset": offset, "timeout": 0, "limit": 1})
+def confirm_offset(update_id: int) -> None:
+    """Tell Telegram we've seen everything up to and including update_id."""
+    tg_api("getUpdates", {"offset": update_id + 1, "timeout": 0, "limit": 1})
+    print(f"Confirmed offset past update_id={update_id}")
 
 
-def get_recent_updates() -> list:
-    """Fetch updates from the last MAX_AGE_SECONDS only."""
+def get_pending_commands() -> list[tuple[int, dict]]:
+    """
+    Returns list of (update_id, message) for recent valid commands.
+
+    Key rule: valid commands are NEVER confirmed here.
+    Only junk (too old / wrong chat) that appears BEFORE the first valid
+    command is confirmed — Telegram offsets are sequential so we can't
+    skip past a valid command we haven't processed yet.
+    """
     updates = get_updates()
     now = time.time()
-    recent = []
-    # highest update_id seen overall (to advance the queue)
-    max_seen_id = None
-    max_processed_id = None  # highest update_id we actually want to process
+
+    valid = []   # (update_id, msg) to process
+    junk_ids = []  # update_ids safe to discard
 
     for update in updates:
-        update_id = update.get("update_id")
-        if max_seen_id is None or update_id > max_seen_id:
-            max_seen_id = update_id
-
+        uid = update.get("update_id")
         msg = update.get("message") or update.get("edited_message")
+
         if not msg:
-            # Non-message update (e.g. inline query) — safe to confirm and skip
+            junk_ids.append(uid)
             continue
 
         age = now - msg.get("date", 0)
-        chat_id = msg.get("chat", {}).get("id")
-        print(
-            f"update_id={update_id} chat={chat_id} age={age:.1f}s text={msg.get('text')!r}"
-        )
+        chat_id = str(msg.get("chat", {}).get("id", ""))
+        text = msg.get("text", "")
+        print(f"  update_id={uid} age={age:.0f}s chat={chat_id} text={text!r}")
 
-        if age > MAX_AGE_SECONDS:
-            # Too old to act on — but still confirm it so it doesn't pile up
-            print("Ignoring old update (confirming to clear queue)")
-            if max_processed_id is None or update_id > max_processed_id:
-                max_processed_id = update_id
-            continue
+        is_old = age > MAX_AGE_SECONDS
+        is_wrong_chat = chat_id != str(TELEGRAM_CHAT_ID)
 
-        if str(chat_id) != str(TELEGRAM_CHAT_ID):
-            print(f"Ignoring message from unknown chat: {chat_id}")
-            if max_processed_id is None or update_id > max_processed_id:
-                max_processed_id = update_id
-            continue
+        if is_old or is_wrong_chat:
+            reason = "too old" if is_old else "wrong chat"
+            print(f"  → discard ({reason})")
+            junk_ids.append(uid)
+        else:
+            print(f"  → valid command")
+            valid.append((uid, msg))
 
-        # Valid, recent, authorised command — keep it
-        recent.append((update_id, msg))
-        if max_processed_id is None or update_id > max_processed_id:
-            max_processed_id = update_id
+    # Confirm junk that sits entirely before the first valid command.
+    # We must not skip ahead of unprocessed valid commands.
+    if junk_ids:
+        if valid:
+            first_valid_uid = valid[0][0]
+            safe_junk = [j for j in junk_ids if j < first_valid_uid]
+        else:
+            safe_junk = junk_ids
 
-    # Confirm old/irrelevant updates so the queue stays clean,
-    # but do NOT confirm valid recent commands yet — they'll be
-    # confirmed after handle_commands processes them successfully.
-    if max_processed_id is not None:
-        confirm_update_offset(max_processed_id + 1)
-        print(f"Confirmed updates through update_id={max_processed_id}")
+        if safe_junk:
+            confirm_offset(max(safe_junk))
 
-    print(f"Found {len(recent)} recent command(s) from authorized chat")
-    return recent
+    print(f"Pending valid commands: {len(valid)}")
+    return valid
 
 
-async def handle_commands():
+async def handle_commands() -> None:
     try:
-        updates = get_recent_updates()
+        commands = get_pending_commands()
 
-        if not updates:
-            print("No recent commands.")
+        if not commands:
+            print("No commands to process.")
             return
 
-        print(f"Processing {len(updates)} command(s)...")
-        for update_id, msg in updates:
+        for uid, msg in commands:
             text = (msg.get("text") or "").strip().lower()
             chat_id = str(msg["chat"]["id"])
-            print(
-                f"Received: '{text}' from chat {chat_id} (update_id={update_id})")
+            print(f"\nProcessing update_id={uid}: '{text}' from {chat_id}")
 
-            if text.startswith("/check"):
-                print("→ Handling /check command")
-                send_telegram(
-                    "🔍 Running appointment check... please wait.", chat_id)
-                try:
-                    print("→ Starting appointment check...")
+            try:
+                if text.startswith("/check"):
+                    send_telegram(
+                        "🔍 <b>Checking for appointments...</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━\n"
+                        "🏛 Embassy of Sweden in Bangkok\n"
+                        "📋 Swedish passport / ID document\n\n"
+                        "⏳ This takes about 15 seconds, hang tight!",
+                        chat_id,
+                    )
                     result = await run_check()
-                    print(f"→ Check result: available={result['available']}")
+                    print(f"Check result: available={result['available']}")
+
                     if result["available"]:
                         send_telegram(
-                            "✅ <b>Appointments may be available!</b>\n\n"
-                            f'👉 <a href="{BOOKING_URL}">Book now</a>',
+                            "🇸🇪 <b>Passport Appointment Available!</b>\n"
+                            "━━━━━━━━━━━━━━━━━━━━━━\n"
+                            "🏛 Embassy of Sweden in Bangkok\n"
+                            "📋 Swedish passport / ID document\n\n"
+                            "⚡️ Slots may be open — act fast, they go quickly!\n\n"
+                            f'👉 <a href="{BOOKING_URL}">Book your appointment now</a>',
                             chat_id,
                         )
                     else:
                         send_telegram(
-                            "❌ No appointments available right now.\n"
-                            "I'll keep checking daily and alert you when slots open.",
+                            "❌ <b>No appointments available</b>\n"
+                            "━━━━━━━━━━━━━━━━━━━━━━\n"
+                            "🏛 Embassy of Sweden in Bangkok\n"
+                            "📋 Swedish passport / ID document\n\n"
+                            "I'll keep checking daily at 08:00 and alert you the moment slots open.\n\n"
+                            f'👉 <a href="{BOOKING_URL}">Check manually</a>',
                             chat_id,
                         )
-                except Exception as e:
-                    print(f"→ Check error: {e}")
-                    import traceback
-                    traceback.print_exc()
+
+                elif text.startswith("/help"):
                     send_telegram(
-                        f"⚠️ Check failed with error:\n<code>{e}</code>", chat_id)
+                        "🤖 <b>Passport Appointment Bot</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━━\n"
+                        "🏛 Embassy of Sweden in Bangkok\n"
+                        "📋 Swedish passport / ID document\n\n"
+                        "<b>Commands</b>\n"
+                        "/check — Check for slots right now\n"
+                        "/help  — Show this message\n\n"
+                        "🕗 Automatic daily check runs at 08:00.\n"
+                        "You'll be alerted immediately if slots open.\n\n"
+                        f'👉 <a href="{BOOKING_URL}">Booking page</a>',
+                        chat_id,
+                    )
 
-            elif text.startswith("/help"):
-                print("→ Handling /help command")
+                else:
+                    send_telegram(
+                        f"❓ Unknown command: <code>{text}</code>\n\n"
+                        "Send /help to see available commands.",
+                        chat_id,
+                    )
+
+            except Exception as e:
+                import traceback
+                traceback.print_exc()
                 send_telegram(
-                    "🤖 <b>Available commands</b>\n\n"
-                    "/check — Check for passport appointment slots right now\n"
-                    "/help  — Show this message\n\n"
-                    "I also run an automatic check every day at 08:00 and "
-                    "will message you if slots become available.",
+                    "⚠️ <b>Check failed</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"Error: <code>{e}</code>\n\n"
+                    f'👉 <a href="{BOOKING_URL}">Check manually</a>',
                     chat_id,
                 )
 
-            else:
-                print(f"→ Unknown command: {text}")
-                send_telegram(
-                    f"Unknown command: <code>{text}</code>\nSend /help to see available commands.",
-                    chat_id,
-                )
+            # Confirm AFTER the command is fully handled
+            confirm_offset(uid)
 
-            # Mark this command as processed so it won't be seen again
-            confirm_update_offset(update_id + 1)
-            print(f"Confirmed update_id={update_id}")
     except Exception as e:
-        print(f"ERROR in handle_commands: {e}")
         import traceback
+        print(f"FATAL ERROR in handle_commands: {e}")
         traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":
-    try:
-        print("Starting Telegram bot command handler...")
-        asyncio.run(handle_commands())
-        print("✓ Command handler completed")
-    except Exception as e:
-        print(f"FATAL ERROR: {e}")
-        import traceback
-        traceback.print_exc()
-        raise
+    print("Starting Telegram bot command handler...")
+    asyncio.run(handle_commands())
+    print("✓ Done")
