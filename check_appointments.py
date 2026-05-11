@@ -10,17 +10,16 @@ import urllib.request
 from playwright.async_api import async_playwright
 
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+TELEGRAM_CHAT_ID   = os.environ["TELEGRAM_CHAT_ID"]
 
 BOOKING_URL = "https://www.migrationsverket.se/ansokanbokning/valjtyp?4&enhet=U0095&sprak=en&callback=https:/www.swedenabroad.se"
 NO_AVAILABILITY_TEXT = "At the moment, there are no available time slots."
 
 
 def send_telegram(message: str, chat_id: str = None) -> None:
-    """Send a Telegram message. Uses TELEGRAM_CHAT_ID if chat_id not provided."""
     try:
-        target = chat_id or TELEGRAM_CHAT_ID
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        target  = chat_id or TELEGRAM_CHAT_ID
+        url     = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
         payload = json.dumps({
             "chat_id": target,
             "text": message,
@@ -38,13 +37,9 @@ def send_telegram(message: str, chat_id: str = None) -> None:
 
 
 async def run_check() -> dict:
-    """
-    Navigates the booking form and returns:
-      { "available": bool, "page_text": str }
-    """
     async with async_playwright() as p:
         browser = await p.chromium.launch(headless=True)
-        page = await browser.new_page(
+        page    = await browser.new_page(
             user_agent=(
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -57,7 +52,7 @@ async def run_check() -> dict:
 
         # Find the dropdown that contains passport options
         selects = page.locator("select")
-        count = await selects.count()
+        count   = await selects.count()
         passport_select = None
         for i in range(count):
             if "pass" in (await selects.nth(i).inner_html()).lower():
@@ -93,7 +88,8 @@ async def run_check() -> dict:
 
         # Click continue / next
         await page.locator(
-            "input[value='Fortsätt'], input[value='Next'], button:has-text('Fortsätt'), button:has-text('Next')"
+            "input[value='Fortsätt'], input[value='Next'], "
+            "button:has-text('Fortsätt'), button:has-text('Next')"
         ).first.click()
         await page.wait_for_load_state("networkidle", timeout=30_000)
         await page.wait_for_timeout(1000)
@@ -124,12 +120,20 @@ async def main():
             "🇸🇪 <b>Passport Appointment Available!</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━━\n"
             "🏛 Embassy of Sweden in Bangkok\n"
-            "📋 Reason: Swedish passport / ID document\n\n"
+            "📋 Swedish passport / ID document\n\n"
             "⚡️ Slots may be open — act fast, they go quickly!\n\n"
             f'👉 <a href="{BOOKING_URL}">Book your appointment now</a>'
         )
     else:
-        print("No appointments — no alert sent.")
+        send_telegram(
+            "🕗 <b>Daily check complete</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n"
+            "🏛 Embassy of Sweden in Bangkok\n"
+            "📋 Swedish passport / ID document\n\n"
+            "❌ No appointments available today.\n"
+            "I'll alert you immediately when slots open.\n\n"
+            f'👉 <a href="{BOOKING_URL}">Check manually</a>'
+        )
 
 
 if __name__ == "__main__":
