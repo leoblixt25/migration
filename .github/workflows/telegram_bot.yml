@@ -2,9 +2,11 @@ name: Telegram Bot (command listener)
 
 on:
   schedule:
-    # Polls every 5 minutes for /check or /help commands
     - cron: "*/5 * * * *"
   workflow_dispatch:
+
+permissions:
+  contents: write   # needed to push the keep-alive timestamp
 
 jobs:
   listen:
@@ -30,3 +32,12 @@ jobs:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID:   ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python telegram_bot.py
+
+      - name: Keep repo active (prevents GitHub cron throttling)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          echo "Last run: $(date -u)" > last_run.txt
+          git add last_run.txt
+          git commit -m "chore: keep-alive $(date -u +%Y-%m-%dT%H:%M:%SZ)" || echo "Nothing to commit"
+          git push
