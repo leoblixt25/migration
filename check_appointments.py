@@ -14,7 +14,7 @@ TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 BOOKING_URL = (
     "https://www.migrationsverket.se/ansokanbokning/valjtyp"
-    "?3&enhet=U0095&sprak=en&callback=https:/www.swedenabroad.se"
+    "?enhet=U0095&sprak=en&callback=https://www.swedenabroad.se"
 )
 NO_AVAILABILITY_TEXT = "At the moment, there are no available time slots."
 
